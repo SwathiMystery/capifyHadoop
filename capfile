@@ -1,0 +1,96 @@
+# hosts are comma seperated quoted hosts
+
+# Your Namenode IP goes here
+role :hadoop_namenode, "XXX.XXX.XXX.XXX"
+# Your Datanode IPs goes here - based on
+# the number of datanodes in your cluster
+# Considered 3 datanodes
+role :hadoop_datanodes, "XXX.XXX.XXX.XXX", "XXX.XXX.XXX.XXX", "XXX.XXX.XXX.XXX"
+
+# Set the $USER of the machine you would
+# be logging in
+set :user, "ubuntu"
+
+## enable forwarding with the ssh keys in your machine [hadoop-cluster-key]
+set :ssh_options, {:forward_agent => true}
+ssh_options[:keys] = ["~/.ssh/hadoop-cluster-key"]
+
+## SCM stuffs here...
+set :scm, :git
+set :repository, "https://github.com/SwathiMystery/capifyHadoop.git"
+
+## Makes clone faster and makes pull to get changes
+set :repository_cache, "git_cache"
+set :deploy_via, :remote_cache
+
+## git clone, update, status - Commands
+ checkout =  " git clone https://github.com/SwathiMystery/capifyHadoop.git /opt/repos/capifyHadoop"
+ update   =  " cd /opt/repos/capifyHadoop; git fetch origin; git pull; "
+ status   =  " cd /opt/repos/capifyHadoop; git status; "
+
+
+# Setup the repo on all datanodes
+desc "Init setup : makes the capifyHadoop repo locally available on all the datanodes "
+task :setup_repo, :roles => :hadoop_datanodes do
+  run "sudo apt-get  --force-yes -y install git-core git-doc gitweb git-gui gitk git-email git-svn"
+  run "sudo mkdir -p -m 777 /opt/repos/"
+  run  checkout
+end
+
+# Pull the latest changes
+desc "Update to the latest version of capifyHadoop"
+task :update_repo, :roles => :hadoop_datanodes do
+  run update
+end
+
+# Install any additional packages
+desc "Install Unzip "
+task :install_unzip, :roles => :hadoop_datanodes do
+  run "sudo apt-get install unzip"
+end
+
+# Check status of the repo for latest updates
+desc "Check the status of capifyHadoop [to update or not] "
+task :check_status, :roles => :hadoop_datanodes do
+  run status
+end
+
+# Delete the repo
+desc "[WARNING]: Deletion of capifyHadoop repo"
+task :del_repo, :roles => :hadoop_datanodes do
+  run "sudo rm -rf /opt/repos/capifyHadoop"
+end
+
+
+## Hadoop Services - considered CDH4 - MRv1
+desc "Status of Slaves"
+task :status_slaves, :roles => :hadoop_datanodes do
+  run "sudo jps"
+end
+
+desc "Restart the TaskTracker and Datanode"
+task :restart_slaves, :roles => :hadoop_datanodes do
+  run "sudo service hadoop-0.20-mapreduce-tasktracker restart"
+  run "sudo service hadoop-hdfs-datanode restart"
+end
+
+desc "Status of Master"
+task :status_master, :roles => :hadoop_namenode do
+  run "sudo jps"
+end
+
+desc "Restart the Master"
+task :restart_master, :roles => :hadoop_namenode do
+  run "sudo service hadoop-hdfs-namenode restart"
+  run "sudo service hadoop-0.20-mapreduce-jobtracker restart"
+end
+
+## Ganglia Services
+
+task :restart_ganglia_metad, :roles => :hadoop_namenode do
+  run "sudo service gmetad restart"
+end
+
+task :restart_ganglia_monitors, :roles => [:hadoop_namenode, :hadoop_datanodes] do
+  run "sudo service ganglia-monitor restart"
+end
